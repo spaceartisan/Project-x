@@ -39,7 +39,7 @@ let game = null;
 let viewW=0, viewH=0, dpr=1, camX=0, camY=0, animTime=0, shake=0;
 let lastTime=performance.now();
 const keys = new Set();
-const joystick = {active:false,id:null,x:0,y:0};
+const joystick = {active:false,id:null,x:0,y:0,originX:0,originY:0};
 let audio=null;
 let toastTimer=0;
 const rand = (min,max) => min + Math.random()*(max-min);
@@ -77,7 +77,7 @@ function refreshMenu(){
   }
 }
 function createGame(){
-  const p={x:0,y:160,r:16,maxHp:100+15*saved.perks.hull,hp:100+15*saved.perks.hull,speed:230*(1+.07*saved.perks.engine),angle:-Math.PI/2,inv:0,gun:0,dash:0,dashing:0,pulse:0,energy:0,level:1,threshold:8};
+  const p={x:0,y:160,r:16,maxHp:100+15*saved.perks.hull,hp:100+15*saved.perks.hull,speed:230*(1+.07*saved.perks.engine),vx:0,vy:0,angle:-Math.PI/2,inv:0,gun:0,dash:0,dashing:0,pulse:0,energy:0,level:1,threshold:8};
   return {player:p,core:{x:0,y:0,r:47,maxHp:130+20*saved.perks.core,hp:130+20*saved.perks.core},wave:1,waveTime:0,time:0,spawn:1.4,score:0,kills:0,salvage:0,enemyId:0,bossAlive:0,enemy:[],bullets:[],hostile:[],orbs:[],particles:[],texts:[],rings:[],mods:{damage:24*(1+.12*saved.perks.gun),fireRate:.31,shots:1,pierce:0,range:475,bulletSpeed:625,speed:1,dashRate:1,pulseRadius:1,pulseDamage:1,pickupRadius:125},upgrades:{},finished:false};
 }
 function start(){
@@ -133,7 +133,7 @@ function tryDash(){
   const p=game.player;let x=(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0)+joystick.x;
   let y=(keys.has('KeyS')||keys.has('ArrowDown')?1:0)-(keys.has('KeyW')||keys.has('ArrowUp')?1:0)+joystick.y;
   if(Math.hypot(x,y)<.1){x=Math.cos(p.angle);y=Math.sin(p.angle);}
-  const n=normalize(x,y);p.dx=n.x;p.dy=n.y;p.dashing=.22;p.dash=3.2*game.mods.dashRate;shake=5;sound('dash');burst(p.x,p.y,colors.mint,15,180);
+  const n=normalize(x,y);p.dx=n.x;p.dy=n.y;p.vx=0;p.vy=0;p.dashing=.22;p.dash=3.2*game.mods.dashRate;shake=5;sound('dash');burst(p.x,p.y,colors.mint,15,180);
 }
 function tryPulse(){
   if(mode!=='playing'||game.player.pulse>0)return;
@@ -145,7 +145,7 @@ function tryPulse(){
 }
 function levelUp(){
   if(mode!=='playing')return;
-  mode='level';showScreens('level');const list=$('upgradeChoices');list.replaceChildren();
+  mode='level';resetJoystick();showScreens('level');const list=$('upgradeChoices');list.replaceChildren();
   const pool=[...upgradeDefs];
   for(let i=0;i<3;i++){
     const index=Math.floor(Math.random()*pool.length),d=pool.splice(index,1)[0];
@@ -169,7 +169,13 @@ function update(dt){
   else{
     const dx=(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0)+joystick.x;
     const dy=(keys.has('KeyS')||keys.has('ArrowDown')?1:0)-(keys.has('KeyW')||keys.has('ArrowUp')?1:0)+joystick.y;
-    const v=normalize(dx,dy),mag=Math.min(1,Math.hypot(dx,dy));p.x+=v.x*p.speed*m.speed*mag*dt;p.y+=v.y*p.speed*m.speed*mag*dt;
+    const v=normalize(dx,dy),mag=Math.min(1,Math.hypot(dx,dy));
+    // Frame-rate-independent acceleration and braking remove abrupt direction changes.
+    const blend=1-Math.exp(-dt*(mag>.02?16:22));
+    p.vx+=(v.x*p.speed*m.speed*mag-p.vx)*blend;
+    p.vy+=(v.y*p.speed*m.speed*mag-p.vy)*blend;
+    if(Math.hypot(p.vx,p.vy)<.15){p.vx=0;p.vy=0;}
+    p.x+=p.vx*dt;p.y+=p.vy*dt;
   }
   p.x=clamp(p.x,-WORLD_X+18,WORLD_X-18);p.y=clamp(p.y,-WORLD_Y+18,WORLD_Y-18);
   if(p.gun<=0)shoot();
@@ -301,21 +307,57 @@ function drawObjects(g){
   for(const q of g.particles){ctx.globalAlpha=clamp(q.life/q.max,0,1);ctx.fillStyle=q.color;ctx.fillRect(q.x-q.size/2,q.y-q.size/2,q.size,q.size);}ctx.globalAlpha=1;
   ctx.font='800 13px ui-monospace,monospace';ctx.textAlign='center';for(const t of g.texts){ctx.globalAlpha=1-t.t/.75;ctx.fillStyle=t.color;ctx.fillText(t.value,t.x,t.y);}ctx.globalAlpha=1;ctx.textAlign='left';
 }
-function draw(){
+function draw(dt){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   const target=game?.player||{x:Math.sin(animTime*.12)*125,y:Math.cos(animTime*.11)*55};
-  camX+=(target.x-viewW*.5-camX)*.065;camY+=(target.y-viewH*.5-camY)*.065;
+  const follow=1-Math.exp(-dt*8);
+  camX+=(target.x-viewW*.5-camX)*follow;camY+=(target.y-viewH*.5-camY)*follow;
   drawBackground();
-  ctx.save();ctx.translate(-camX+(shake?rand(-shake,shake):0),-camY+(shake?rand(-shake,shake):0));
+  // Decaying, continuous shake rather than new random pixel jumps every frame.
+  const shakeX=Math.sin(animTime*64)*shake*.55,shakeY=Math.cos(animTime*77)*shake*.55;
+  ctx.save();ctx.translate(-camX+shakeX,-camY+shakeY);
   if(game)drawObjects(game);else{drawBeacon({x:0,y:0,r:47,hp:130,maxHp:130});drawShip({x:0,y:142,angle:-Math.PI/2,dashing:0,inv:0});}
-  ctx.restore();shake*=.85;if(shake<.25)shake=0;
+  ctx.restore();shake*=Math.exp(-dt*10);if(shake<.25)shake=0;
 }
-function loop(t){const dt=Math.min(.034,Math.max(0,(t-lastTime)/1000));lastTime=t;animTime+=dt;if(mode==='playing'){update(dt);updateHUD();}draw();requestAnimationFrame(loop);}
+let hudTimer=0;
+function loop(t){const dt=Math.min(.05,Math.max(0,(t-lastTime)/1000));lastTime=t;animTime+=dt;if(mode==='playing'){update(dt);hudTimer+=dt;if(hudTimer>=.06){updateHUD();hudTimer=0;}}draw(dt);requestAnimationFrame(loop);}
 requestAnimationFrame(loop);
 function togglePause(){if(mode==='playing'){mode='pause';showScreens('pause');resetJoystick();}else if(mode==='pause'){mode='playing';showScreens(null);}}
-function resetJoystick(){joystick.active=false;joystick.x=0;joystick.y=0;joystick.id=null;$('stick').style.transform='translate(0,0)';}
-function updateJoystick(e){const rect=$('joystick').getBoundingClientRect(),cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;const dx=e.clientX-cx,dy=e.clientY-cy,d=Math.hypot(dx,dy),max=45;joystick.x=clamp(dx/max,-1,1);joystick.y=clamp(dy/max,-1,1);if(d>max){joystick.x=dx/d;joystick.y=dy/d;}$('stick').style.transform=`translate(${joystick.x*max}px,${joystick.y*max}px)`;}
-const stickEl=$('joystick');stickEl.addEventListener('pointerdown',e=>{if(mode!=='playing')return;e.preventDefault();joystick.active=true;joystick.id=e.pointerId;stickEl.setPointerCapture(e.pointerId);updateJoystick(e);});stickEl.addEventListener('pointermove',e=>{if(joystick.active&&joystick.id===e.pointerId)updateJoystick(e);});for(const ev of ['pointerup','pointercancel','lostpointercapture'])stickEl.addEventListener(ev,()=>resetJoystick());
+// A floating stick may start anywhere on the arena, but action buttons keep
+// their own touch pointers. The first held gameplay finger owns movement.
+const stickEl=$('joystick');
+function resetJoystick(){
+  const oldId=joystick.id;
+  joystick.active=false;joystick.id=null;joystick.x=0;joystick.y=0;
+  $('stick').style.transform='translate(0,0)';
+  stickEl.classList.remove('floating');
+  stickEl.style.left='';stickEl.style.top='';stickEl.style.bottom='';
+  if(oldId!==null&&canvas.hasPointerCapture(oldId))canvas.releasePointerCapture(oldId);
+}
+function updateJoystick(e){
+  if(!joystick.active||joystick.id!==e.pointerId)return;
+  const dx=e.clientX-joystick.originX,dy=e.clientY-joystick.originY;
+  const d=Math.hypot(dx,dy),deadZone=7,fullThrow=56;
+  const power=clamp((d-deadZone)/fullThrow,0,1);
+  joystick.x=d>0?dx/d*power:0;joystick.y=d>0?dy/d*power:0;
+  $('stick').style.transform=`translate(${Math.round(joystick.x*48)}px,${Math.round(joystick.y*48)}px)`;
+}
+canvas.addEventListener('pointerdown',e=>{
+  if(mode!=='playing'||!isTouch()||(e.pointerType!=='touch'&&e.pointerType!=='pen')||joystick.active)return;
+  e.preventDefault();
+  joystick.active=true;joystick.id=e.pointerId;
+  joystick.originX=e.clientX;joystick.originY=e.clientY;
+  const arena=canvas.getBoundingClientRect();
+  stickEl.style.left=`${e.clientX-arena.left-stickEl.offsetWidth/2}px`;
+  stickEl.style.top=`${e.clientY-arena.top-stickEl.offsetHeight/2}px`;
+  stickEl.style.bottom='auto';stickEl.classList.add('floating');
+  canvas.setPointerCapture(e.pointerId);
+  updateJoystick(e);
+});
+canvas.addEventListener('pointermove',updateJoystick);
+for(const eventName of ['pointerup','pointercancel','lostpointercapture']){
+  canvas.addEventListener(eventName,e=>{if(joystick.id===e.pointerId)resetJoystick();});
+}
 $('dashTouch').addEventListener('pointerdown',e=>{e.preventDefault();tryDash();});$('pulseTouch').addEventListener('pointerdown',e=>{e.preventDefault();tryPulse();});
 window.addEventListener('keydown',e=>{
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();

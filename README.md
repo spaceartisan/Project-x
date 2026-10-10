@@ -4,7 +4,7 @@ A complete, original, playable browser arcade roguelite. Defend the beacon throu
 
 ## Play
 
-Open `index.html` from a local web server (or deploy to Pages). On desktop use **WASD / arrows** to move, **Space** to dash, **Q** for EMP and **P / Escape** to pause. Your ship fires automatically. On touch, drag the left stick and press Dash/EMP on the right. All saves stay in your browser via localStorage.
+Open `index.html` from a local web server (or deploy to Pages). On desktop use **WASD / arrows** to move, **Space** to dash, **Q** for EMP and **P / Escape** to pause. Your ship fires automatically. On touch, press and drag anywhere in the arena for a floating movement stick. Release to stop; Dash/EMP on the right support a second finger. Ship acceleration, braking and camera follow are smoothed. All saves stay in your browser via localStorage.
 
 For a local preview: `python -m http.server 8000` and visit `http://localhost:8000/`.
 
