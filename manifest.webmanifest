@@ -1,1 +1,1 @@
-The requested file reference is not currently visible. Use files.search or files.list to rediscover the file, then retry with a returned ref_id or file_id.
+{"name":"STARWARD — Last Beacon","short_name":"STARWARD","description":"An offline-ready eight-wave arcade roguelite.","start_url":"./","scope":"./","display":"standalone","background_color":"#090d1a","theme_color":"#090d1a","icons":[{"src":"favicon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}

@@ -1,1 +1,10 @@
-The requested file reference is not currently visible. Use files.search or files.list to rediscover the file, then retry with a returned ref_id or file_id.
+pages:
+  stage: deploy
+  script:
+    - mkdir -p public
+    - cp index.html style.css game.js favicon.svg manifest.webmanifest sw.js public/
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

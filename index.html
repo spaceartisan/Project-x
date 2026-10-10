@@ -1,1 +1,53 @@
-The requested file reference is not currently visible. Use files.search or files.list to rediscover the file, then retry with a returned ref_id or file_id.
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#090d1a">
+  <meta name="description" content="STARWARD — a fast, free, offline-ready arcade roguelite. Protect the last beacon against eight waves of hostile machines.">
+  <title>STARWARD — Last Beacon</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="game-shell">
+    <canvas id="world" aria-label="Arcade arena. Move with WASD or arrow keys. Your ship fires automatically at the nearest threat."></canvas>
+    <div class="grain" aria-hidden="true"></div>
+    <div class="vignette" aria-hidden="true"></div>
+    <div class="corner-brand"><span class="brand-mark">✳</span><span>STARWARD <em>/</em> LAST BEACON</span></div>
+    <div id="hud" class="hud hidden" aria-live="off">
+      <div class="hud-top">
+        <div class="hud-card status-card"><div class="hud-label">PILOT <span id="hpText">100 / 100</span></div><div class="meter"><i id="hpBar"></i></div><div class="hud-label spaced">BEACON <span id="coreText">100 / 100</span></div><div class="meter core-meter"><i id="coreBar"></i></div></div>
+        <div class="wave-block"><span class="micro">DEFENSE PROTOCOL</span><strong id="waveText">WAVE 01 / 08</strong><div class="wave-track"><i id="waveBar"></i></div></div>
+        <div class="hud-card right-card"><div class="hud-label">SCORE <span id="scoreText">000000</span></div><div class="hud-label spaced">HOSTILES <span id="enemyText">00</span></div><button id="pauseButton" class="icon-button" title="Pause (P / Esc)" aria-label="Pause game">Ⅱ</button></div>
+      </div>
+      <div class="hud-bottom"><div class="xp-module"><span class="micro">SYSTEM INTEGRITY <span id="levelText">LVL 01</span></span><div class="xp-track"><i id="xpBar"></i></div></div><div class="ability-legend"><span><kbd>SPACE</kbd> DASH <b id="dashReady">READY</b></span><span><kbd>Q</kbd> EMP <b id="pulseReady">READY</b></span></div></div>
+      <div id="beaconPointer" class="beacon-pointer hidden">⌖ BEACON <span id="beaconDistance"></span></div>
+    </div>
+    <div id="touchControls" class="touch-controls hidden" aria-label="Touch game controls"><div id="joystick" class="joystick"><div class="joystick-ring"></div><div id="stick" class="stick"></div><small>MOVE</small></div><div class="touch-actions"><button id="pulseTouch" class="touch-action secondary" aria-label="EMP pulse">EMP<span id="pulseTouchCooldown"></span></button><button id="dashTouch" class="touch-action" aria-label="Dash">DASH<span id="dashTouchCooldown"></span></button></div></div>
+    <section id="startPanel" class="screen start-screen">
+      <div class="start-content">
+        <div class="eyebrow"><span class="signal-dot"></span> FINAL TRANSMISSION <span class="line"></span> SECTOR 07</div>
+        <p class="overline">A ONE-PILOT ARCADE ROGUELITE</p>
+        <h1>THE LAST<br><span>BEACON</span></h1>
+        <p class="hero-description">The stars went quiet. The machines didn't.<br>Hold the line through eight waves. Bring the light home.</p>
+        <div class="start-buttons"><button id="startButton" class="primary-button"><span>LAUNCH DEFENSE</span><span class="button-arrow">↗</span></button><button id="soundButton" class="minor-button" aria-label="Toggle sound">◖ SOUND ON</button></div>
+        <div class="highscore"><span>PERSONAL RECORD</span><strong id="bestScore">000000</strong><span class="vertical-divider"></span><span>MISSIONS</span><strong id="totalRuns">00</strong></div>
+      </div>
+      <aside class="hangar">
+        <div class="hangar-heading"><span>THE HANGAR</span><span class="hangar-currency">✦ <b id="bankBalance">0</b> SALVAGE</span></div>
+        <p class="hangar-subtitle">Permanent upgrades. Every sortie counts.</p>
+        <div id="hangarUpgrades" class="hangar-list"></div>
+        <div class="hangar-foot"><div><strong>HOW TO PLAY</strong><p>Move with <kbd>WASD</kbd> or <kbd>↑←↓→</kbd>. Weapons auto-target. <kbd>SPACE</kbd> to dash, <kbd>Q</kbd> for EMP. On mobile, drag the stick and tap abilities.</p></div><span class="decorative-star">✳</span></div>
+      </aside>
+      <div class="menu-footer">TRANSMISSION // 0048.21 <span>NO ACCOUNT. NO ADS. JUST ONE MORE RUN.</span></div>
+    </section>
+    <section id="levelPanel" class="screen modal-screen hidden" aria-labelledby="upgradeTitle"><div class="modal"><p class="overline">SIGNAL STRENGTH INCREASED</p><h2 id="upgradeTitle">SYSTEM UPGRADE</h2><p>Choose one enhancement for this run.</p><div id="upgradeChoices" class="upgrade-choices"></div><div class="modal-foot">TIME IS FROZEN WHILE YOU CHOOSE</div></div></section>
+    <section id="pausePanel" class="screen modal-screen hidden"><div class="modal compact"><p class="overline">TRANSMISSION ON HOLD</p><h2>PAUSED<span class="accent">.</span></h2><p>Even the stars can wait.</p><button id="resumeButton" class="primary-button"><span>RESUME MISSION</span><span>↗</span></button><button id="quitButton" class="minor-button wide">ABANDON RUN</button></div></section>
+    <section id="endPanel" class="screen modal-screen hidden"><div class="modal end-modal"><p id="endEyebrow" class="overline">TRANSMISSION LOST</p><h2 id="endTitle">SIGNAL LOST<span class="accent">.</span></h2><p id="endSubtitle">The beacon has fallen.</p><div class="end-stats"><div><span>SCORE</span><strong id="finalScore">0</strong></div><div><span>WAVES</span><strong id="finalWave">0 / 8</strong></div><div><span>SALVAGE EARNED</span><strong id="finalSalvage">+0</strong></div></div><button id="retryButton" class="primary-button"><span>FLY AGAIN</span><span>↗</span></button><button id="hangarButton" class="minor-button wide">RETURN TO HANGAR</button></div></section>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </main>
+  <script src="game.js" defer></script>
+</body>
+</html>
