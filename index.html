@@ -12,7 +12,7 @@
 </head>
 <body>
   <main class="game-shell">
-    <canvas id="world" aria-label="Arcade arena. Move with WASD or arrow keys. Your ship fires automatically at the nearest threat."></canvas>
+    <canvas id="world" aria-label="Arcade arena. Move with WASD or arrow keys. Your ship fires automatically at the nearest threat. Beware of charging lancers and collect repair cells to restore the beacon."></canvas>
     <div class="grain" aria-hidden="true"></div>
     <div class="vignette" aria-hidden="true"></div>
     <div class="corner-brand"><span class="brand-mark">✳</span><span>STARWARD <em>/</em> LAST BEACON</span></div>
@@ -23,7 +23,7 @@
         <div class="hud-card right-card"><div class="hud-label">SCORE <span id="scoreText">000000</span></div><div class="hud-label spaced">HOSTILES <span id="enemyText">00</span></div><button id="pauseButton" class="icon-button" title="Pause (P / Esc)" aria-label="Pause game">Ⅱ</button></div>
       </div>
       <div class="hud-bottom"><div class="xp-module"><span class="micro">SYSTEM INTEGRITY <span id="levelText">LVL 01</span></span><div class="xp-track"><i id="xpBar"></i></div></div><div class="ability-legend"><span><kbd>SPACE</kbd> DASH <b id="dashReady">READY</b></span><span><kbd>Q</kbd> EMP <b id="pulseReady">READY</b></span></div></div>
-      <div id="beaconPointer" class="beacon-pointer hidden">⌖ BEACON <span id="beaconDistance"></span></div>
+      <div id="beaconPointer" class="beacon-pointer hidden"><span id="beaconArrow" aria-hidden="true">⌖</span> BEACON <span id="beaconDistance"></span></div>
     </div>
     <div id="touchControls" class="touch-controls hidden" aria-label="Touch game controls"><div id="joystick" class="joystick"><div class="joystick-ring"></div><div id="stick" class="stick"></div><small>MOVE</small></div><div class="touch-actions"><button id="pulseTouch" class="touch-action secondary" aria-label="EMP pulse">EMP<span id="pulseTouchCooldown"></span></button><button id="dashTouch" class="touch-action" aria-label="Dash">DASH<span id="dashTouchCooldown"></span></button></div></div>
     <section id="startPanel" class="screen start-screen">

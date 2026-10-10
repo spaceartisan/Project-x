@@ -14,3 +14,12 @@ For a local preview: `python -m http.server 8000` and visit `http://localhost:80
 - **GitLab Pages:** Mirror/import this repository into GitLab; `.gitlab-ci.yml` copies files to the `public/` artifact on the default branch. No npm, build or secret needed.
 
 No external scripts, fonts, or analytics. Web Audio is generated locally and can be muted. Game works offline after first successful load through the registered service worker. The service worker requires HTTPS or localhost.
+
+## v1.2 — Threat and survival pass
+
+- **Lancer enemies** join waves 2–8. They telegraph a locked trajectory before a high-speed dash; sidestep the line or counter-dash.
+- **Beacon repair cells** can drop from heavy enemies when the beacon is damaged. Collect the mint-green hexagon to repair it.
+- **Critical warnings** indicate imminent beacon loss, with a directional beacon pointer when you stray far away.
+- **Level-up queue** preserves every earned upgrade even when multiple XP orbs are collected in one frame.
+- **Background auto-pause** prevents unseen damage on mobile tab switches.
+- Particle and pickup deceleration is consistent across frame rates. Existing browser saves remain compatible.

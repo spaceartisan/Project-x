@@ -6,6 +6,7 @@ const ctx = canvas.getContext('2d', {alpha:false});
 const STORAGE = 'starward-save-v1';
 const MAX_WAVE = 8;
 const WAVE_LENGTH = 25;
+const CRITICAL_CORE_RATIO = .3;
 const WORLD_X = 1180;
 const WORLD_Y = 880;
 const TAU = Math.PI * 2;
@@ -78,7 +79,7 @@ function refreshMenu(){
 }
 function createGame(){
   const p={x:0,y:160,r:16,maxHp:100+15*saved.perks.hull,hp:100+15*saved.perks.hull,speed:230*(1+.07*saved.perks.engine),vx:0,vy:0,angle:-Math.PI/2,inv:0,gun:0,dash:0,dashing:0,pulse:0,energy:0,level:1,threshold:8};
-  return {player:p,core:{x:0,y:0,r:47,maxHp:130+20*saved.perks.core,hp:130+20*saved.perks.core},wave:1,waveTime:0,time:0,spawn:1.4,score:0,kills:0,salvage:0,enemyId:0,bossAlive:0,enemy:[],bullets:[],hostile:[],orbs:[],particles:[],texts:[],rings:[],mods:{damage:24*(1+.12*saved.perks.gun),fireRate:.31,shots:1,pierce:0,range:475,bulletSpeed:625,speed:1,dashRate:1,pulseRadius:1,pulseDamage:1,pickupRadius:125},upgrades:{},finished:false};
+  return {player:p,core:{x:0,y:0,r:47,maxHp:130+20*saved.perks.core,hp:130+20*saved.perks.core},wave:1,waveTime:0,time:0,spawn:1.4,score:0,kills:0,salvage:0,pendingUpgrades:0,criticalNotified:false,enemyId:0,bossAlive:0,enemy:[],bullets:[],hostile:[],orbs:[],particles:[],texts:[],rings:[],mods:{damage:24*(1+.12*saved.perks.gun),fireRate:.31,shots:1,pierce:0,range:475,bulletSpeed:625,speed:1,dashRate:1,pulseRadius:1,pulseDamage:1,pickupRadius:125},upgrades:{},finished:false};
 }
 function start(){
   game=createGame();mode='playing';camX=0;camY=0;shake=0;keys.clear();resetJoystick();showScreens(null);sound('upgrade');showToast('DEFEND THE BEACON');updateHUD();
@@ -86,9 +87,9 @@ function start(){
 function damageCore(amount){if(!game||mode!=='playing')return;game.core.hp=Math.max(0,game.core.hp-amount);shake=Math.max(shake,5);sound('hurt');if(game.core.hp<=0) finish(false);}
 function damagePlayer(amount,x,y){const p=game.player;if(p.inv>0||p.dashing>0)return;p.hp=Math.max(0,p.hp-amount);p.inv=.75;shake=Math.max(shake,8);burst(p.x,p.y,colors.coral,13,155);sound('hurt');if(x!==undefined){const v=normalize(p.x-x,p.y-y);p.x=clamp(p.x+v.x*22,-WORLD_X,WORLD_X);p.y=clamp(p.y+v.y*22,-WORLD_Y,WORLD_Y);}if(p.hp<=0)finish(false);}
 function spawnEnemy(kind,x,y){
-  const specs={drone:{hp:24,speed:72,r:14,damage:9,color:colors.coral,points:15},wisp:{hp:15,speed:126,r:10,damage:7,color:colors.gold,points:17},brute:{hp:96,speed:49,r:23,damage:17,color:'#ee8177',points:31},sniper:{hp:38,speed:65,r:15,damage:9,color:colors.blue,points:23},boss:{hp:410+(game.wave===8?330:0),speed:34,r:46,damage:24,color:colors.purple,points:450}};
+  const specs={drone:{hp:24,speed:72,r:14,damage:9,color:colors.coral,points:15},wisp:{hp:15,speed:126,r:10,damage:7,color:colors.gold,points:17},brute:{hp:96,speed:49,r:23,damage:17,color:'#ee8177',points:31},lancer:{hp:52,speed:83,r:18,damage:16,color:'#ffbf82',points:28},sniper:{hp:38,speed:65,r:15,damage:9,color:colors.blue,points:23},boss:{hp:410+(game.wave===8?330:0),speed:34,r:46,damage:24,color:colors.purple,points:450}};
   const s=specs[kind];if(!s)return;
-  const e={id:++game.enemyId,kind,x,y,hp:s.hp,maxHp:s.hp,speed:s.speed*(1+(game.wave-1)*.055),r:s.r,damage:s.damage,color:s.color,points:s.points,cool:rand(.3,1.2),attack:rand(.2,1.1),phase:rand(0,TAU),hit:0};
+  const e={id:++game.enemyId,kind,x,y,hp:s.hp,maxHp:s.hp,speed:s.speed*(1+(game.wave-1)*.055),r:s.r,damage:s.damage,color:s.color,points:s.points,cool:rand(.3,1.2),attack:rand(.2,1.1),phase:rand(0,TAU),hit:0,chargeCooldown:rand(1.5,3),chargeWindup:0,chargeTime:0,chargeVX:0,chargeVY:0};
   game.enemy.push(e);if(kind==='boss'){game.bossAlive++;showToast(game.wave===8?'THE HARBINGER HAS ARRIVED':'ELITE SIGNAL DETECTED');sound('pulse');}
 }
 function spawnAtEdge(kind){
@@ -126,6 +127,10 @@ function killEnemy(e){
   if(Math.random()<(e.kind==='boss'?1:.22))g.orbs.push({x:e.x+rand(-10,10),y:e.y+rand(-10,10),vx:0,vy:0,kind:'scrap',value:e.kind==='boss'?25:2,r:6,life:20});
   burst(e.x,e.y,e.color,e.kind==='boss'?72:16,e.kind==='boss'?300:150);floating(e.x,e.y,'+'+e.points,e.color);
   if(e.kind==='boss'){shake=18;sound('pulse');}
+  // Repair cells reward dangerous close-quarters kills when the beacon needs help.
+  if(g.core.hp<g.core.maxHp && (e.kind==='boss'||(e.kind==='brute'&&Math.random()<.15)||(e.kind==='lancer'&&Math.random()<.10))){
+    g.orbs.push({x:e.x,y:e.y,vx:rand(-25,25),vy:rand(-25,25),kind:'repair',value:e.kind==='boss'?32:16,r:9,life:25});
+  }
 }
 function inflict(e,amount){e.hp-=amount;e.hit=.14;if(e.hp<=0){killEnemy(e);e.hp=-99999;}else burst(e.x,e.y,e.color,3,52);}
 function tryDash(){
@@ -151,15 +156,21 @@ function levelUp(){
     const index=Math.floor(Math.random()*pool.length),d=pool.splice(index,1)[0];
     const button=document.createElement('button');button.className='upgrade-card';
     button.innerHTML=`<span class="upgrade-symbol">${d.icon}</span><span class="upgrade-type">${d.type}</span><strong>${d.name}</strong><p>${d.desc}</p>`;
-    button.addEventListener('click',()=>{if(mode!=='level')return;d.apply(game);game.upgrades[d.id]=(game.upgrades[d.id]||0)+1;mode='playing';showScreens(null);sound('upgrade');showToast(d.name.toUpperCase()+' ONLINE');});
+    button.addEventListener('click',()=>{
+      if(mode!=='level')return;d.apply(game);game.upgrades[d.id]=(game.upgrades[d.id]||0)+1;game.pendingUpgrades=Math.max(0,game.pendingUpgrades-1);
+      mode='playing';if(game.pendingUpgrades>0)levelUp();else showScreens(null);
+      sound('upgrade');showToast(d.name.toUpperCase()+' ONLINE');
+    });
     list.append(button);
   }
   sound('upgrade');
 }
 function collectOrb(o){
+  if(o.kind==='repair'){const healed=Math.min(o.value,game.core.maxHp-game.core.hp);game.core.hp+=healed;floating(o.x,o.y,'✚ BEACON +'+Math.ceil(healed),colors.mint);sound('upgrade');return;}
   if(o.kind==='scrap'){game.salvage+=o.value;floating(o.x,o.y,'✦ '+o.value,colors.gold);sound('pickup');return;}
   const p=game.player;p.energy+=o.value;
-  if(p.energy>=p.threshold){p.energy-=p.threshold;p.level++;p.threshold=Math.round(8*Math.pow(1.32,p.level-1));levelUp();}
+  while(p.energy>=p.threshold){p.energy-=p.threshold;p.level++;p.threshold=Math.round(8*Math.pow(1.32,p.level-1));game.pendingUpgrades++;}
+  if(mode==='playing'&&game.pendingUpgrades>0)levelUp();
   if(Math.random()<.25)sound('pickup');
 }
 function update(dt){
@@ -179,9 +190,12 @@ function update(dt){
   }
   p.x=clamp(p.x,-WORLD_X+18,WORLD_X-18);p.y=clamp(p.y,-WORLD_Y+18,WORLD_Y-18);
   if(p.gun<=0)shoot();
+  // One audible warning on entering critical integrity; resetting allows another alert after repairs.
+  if(g.core.hp/g.core.maxHp<=CRITICAL_CORE_RATIO&&!g.criticalNotified){g.criticalNotified=true;showToast('WARNING: BEACON CRITICAL');sound('hurt');}
+  if(g.core.hp/g.core.maxHp>CRITICAL_CORE_RATIO+.12)g.criticalNotified=false;
   g.spawn-=dt;
   if(g.spawn<=0&&g.enemy.length<175){
-    const w=g.wave,kind=Math.random()<Math.min(.25,.04+w*.027)?'brute':Math.random()<Math.min(.42,w*.052)?'wisp':Math.random()<Math.min(.32,w*.04)?'sniper':'drone';
+    const w=g.wave,kind=(w>=2&&Math.random()<Math.min(.17,(w-1)*.03))?'lancer':Math.random()<Math.min(.25,.04+w*.027)?'brute':Math.random()<Math.min(.42,w*.052)?'wisp':Math.random()<Math.min(.32,w*.04)?'sniper':'drone';
     spawnAtEdge(kind);if(w>=5&&Math.random()<.24)spawnAtEdge('drone');
     g.spawn=Math.max(.33,1.3-w*.12)*rand(.83,1.24);
   }
@@ -191,7 +205,19 @@ function update(dt){
     e.cool-=dt;e.attack-=dt;e.hit=Math.max(0,e.hit-dt);e.phase+=dt;
     const toPilot=dist(e,p),target=toPilot<290?p:g.core;
     const v=normalize(target.x-e.x,target.y-e.y),dd=dist(e,target);
-    if(e.kind==='sniper'||e.kind==='boss'){
+    if(e.kind==='lancer'){
+      // Clearly signalled wind-up: the charge direction locks when the warning begins.
+      e.chargeCooldown-=dt;
+      if(e.chargeTime>0){
+        e.x+=e.chargeVX*390*dt;e.y+=e.chargeVY*390*dt;e.chargeTime-=dt;
+        if(e.chargeTime<=0)e.chargeCooldown=rand(2.2,3.4);
+      }else if(e.chargeWindup>0){
+        e.chargeWindup-=dt;
+        if(e.chargeWindup<=0)e.chargeTime=.48;
+      }else if(dd<425&&dd>45&&e.chargeCooldown<=0){
+        e.chargeWindup=.72;e.chargeVX=v.x;e.chargeVY=v.y;
+      }else if(dd>e.r+target.r*.63){e.x+=v.x*e.speed*dt;e.y+=v.y*e.speed*dt;}
+    }else if(e.kind==='sniper'||e.kind==='boss'){
       if(dd>220){e.x+=v.x*e.speed*dt;e.y+=v.y*e.speed*dt;}
       if(e.cool<=0&&dd<650){
         const ang=Math.atan2(target.y-e.y,target.x-e.x), shots=e.kind==='boss'?5:1;
@@ -215,12 +241,12 @@ function update(dt){
     if(mode!=='playing')return;
   }
   g.hostile=g.hostile.filter(b=>b.life>0);
-  for(const o of g.orbs){o.life-=dt;o.x+=o.vx*dt;o.y+=o.vy*dt;o.vx*=.94;o.vy*=.94;
+  for(const o of g.orbs){o.life-=dt;o.x+=o.vx*dt;o.y+=o.vy*dt;const drag=Math.pow(.94,dt*60);o.vx*=drag;o.vy*=drag;
     const dd=dist(o,p);if(dd<m.pickupRadius){const speed=dd<38?800:500;const n=normalize(p.x-o.x,p.y-o.y);o.x+=n.x*speed*dt;o.y+=n.y*speed*dt;}
     if(dd<22){o.life=0;collectOrb(o);}
   }
   g.orbs=g.orbs.filter(o=>o.life>0);
-  for(const q of g.particles){if(!q.max)q.max=q.life;q.x+=q.vx*dt;q.y+=q.vy*dt;q.life-=dt;q.vx*=.97;q.vy*=.97;}
+  for(const q of g.particles){if(!q.max)q.max=q.life;q.x+=q.vx*dt;q.y+=q.vy*dt;q.life-=dt;const drag=Math.pow(.97,dt*60);q.vx*=drag;q.vy*=drag;}
   g.particles=g.particles.filter(q=>q.life>0);
   for(const t of g.texts){t.t+=dt;t.y-=32*dt;}g.texts=g.texts.filter(t=>t.t<.75);
   for(const r of g.rings){r.life-=dt;r.r=r.max*(1-r.life/r.total);}g.rings=g.rings.filter(r=>r.life>0);
@@ -246,6 +272,8 @@ function updateHUD(){if(!game)return;const g=game,p=g.player;
   $('dashTouchCooldown').textContent=p.dash>0?Math.ceil(p.dash)+'s':'';$('pulseTouchCooldown').textContent=p.pulse>0?Math.ceil(p.pulse)+'s':'';
   $('dashTouch').classList.toggle('cooling',p.dash>0);$('pulseTouch').classList.toggle('cooling',p.pulse>0);
   const d=dist(p,g.core);$('beaconPointer').classList.toggle('hidden',d<Math.min(viewW,viewH)*.42);$('beaconDistance').textContent=Math.round(d)+'m';
+  const a=Math.atan2(g.core.y-p.y,g.core.x-p.x);$('beaconArrow').textContent=['→','↘','↓','↙','←','↖','↑','↗'][(Math.round(a/(Math.PI/4))+8)%8];
+  $('beaconPointer').classList.toggle('critical',g.core.hp/g.core.maxHp<=CRITICAL_CORE_RATIO);
 }
 function resize(){viewW=window.innerWidth;viewH=window.innerHeight;dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.round(viewW*dpr);canvas.height=Math.round(viewH*dpr);canvas.style.width=viewW+'px';canvas.style.height=viewH+'px';}
 window.addEventListener('resize',resize);resize();
@@ -288,9 +316,14 @@ function drawShip(p){
   ctx.globalAlpha=.8;const flame=7+Math.sin(animTime*36)*5+(p.dashing>0?15:0);ctx.fillStyle=p.dashing>0?'#e6fff8':'#75daee';ctx.beginPath();ctx.moveTo(-12,-7);ctx.lineTo(-12-flame,0);ctx.lineTo(-12,7);ctx.fill();ctx.restore();
 }
 function drawEnemy(e){
+  if(e.kind==='lancer'&&e.chargeWindup>0){
+    const warning=1-e.chargeWindup/.72;
+    ctx.save();ctx.strokeStyle=colors.gold;ctx.globalAlpha=.35+warning*.6;ctx.lineWidth=3;ctx.setLineDash([11,8]);
+    ctx.beginPath();ctx.moveTo(e.x,e.y);ctx.lineTo(e.x+e.chargeVX*225,e.y+e.chargeVY*225);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+  }
   ctx.save();ctx.translate(e.x,e.y);const spin=e.phase*(e.kind==='wisp'?2:.4);ctx.rotate(spin);
   ctx.shadowBlur=e.kind==='boss'?24:10;ctx.shadowColor=e.color;ctx.lineWidth=e.kind==='boss'?4:2;ctx.strokeStyle=e.hit>0?'#fff':e.color;ctx.fillStyle=e.hit>0?'#f7ffff':'#182334';
-  if(e.kind==='wisp'){polygon(0,0,e.r,4,Math.PI/4);}else if(e.kind==='brute'){polygon(0,0,e.r,6,Math.PI/6);}else if(e.kind==='boss'){polygon(0,0,e.r,8,Math.PI/8);}else if(e.kind==='sniper'){polygon(0,0,e.r,4,Math.PI/4);}else{polygon(0,0,e.r,3,-Math.PI/2);}
+  if(e.kind==='wisp'){polygon(0,0,e.r,4,Math.PI/4);}else if(e.kind==='lancer'){polygon(0,0,e.r,4,0);}else if(e.kind==='brute'){polygon(0,0,e.r,6,Math.PI/6);}else if(e.kind==='boss'){polygon(0,0,e.r,8,Math.PI/8);}else if(e.kind==='sniper'){polygon(0,0,e.r,4,Math.PI/4);}else{polygon(0,0,e.r,3,-Math.PI/2);}
   ctx.fill();ctx.stroke();ctx.shadowBlur=0;ctx.fillStyle=e.color;
   if(e.kind==='boss'){polygon(0,0,e.r*.52,8,-spin);ctx.fill();ring(0,0,e.r*.74,'#e6d8ff',.7);}else{ctx.beginPath();ctx.arc(0,0,e.kind==='brute'?7:4,0,TAU);ctx.fill();}
   ctx.restore();
@@ -298,7 +331,7 @@ function drawEnemy(e){
 }
 function drawObjects(g){
   drawBeacon(g.core);
-  for(const o of g.orbs){ctx.save();ctx.translate(o.x,o.y);ctx.rotate(animTime*2);ctx.shadowBlur=16;ctx.shadowColor=o.kind==='xp'?colors.purple:colors.gold;ctx.fillStyle=o.kind==='xp'?colors.purple:colors.gold;polygon(0,0,o.r,4,Math.PI/4);ctx.fill();ctx.restore();}
+  for(const o of g.orbs){ctx.save();ctx.translate(o.x,o.y);ctx.rotate(animTime*2);ctx.shadowBlur=o.kind==='repair'?25:16;ctx.shadowColor=o.kind==='repair'?colors.mint:o.kind==='xp'?colors.purple:colors.gold;ctx.fillStyle=ctx.shadowColor;polygon(0,0,o.r,o.kind==='repair'?6:4,Math.PI/4);ctx.fill();if(o.kind==='repair'){ctx.rotate(-animTime*2);ctx.fillStyle='#061521';ctx.fillRect(-2,-6,4,12);ctx.fillRect(-6,-2,12,4);}ctx.restore();}
   for(const e of g.enemy)drawEnemy(e);
   for(const b of g.hostile){ctx.strokeStyle='#f48b7f';ctx.lineWidth=b.r*1.7;ctx.shadowBlur=13;ctx.shadowColor=colors.coral;ctx.beginPath();ctx.moveTo(b.x-b.vx*.025,b.y-b.vy*.025);ctx.lineTo(b.x,b.y);ctx.stroke();}ctx.shadowBlur=0;
   for(const b of g.bullets){ctx.strokeStyle=colors.mint;ctx.lineWidth=5;ctx.shadowBlur=15;ctx.shadowColor=colors.mint;ctx.beginPath();ctx.moveTo(b.x-b.vx*.022,b.y-b.vy*.022);ctx.lineTo(b.x,b.y);ctx.stroke();}ctx.shadowBlur=0;
@@ -366,6 +399,8 @@ window.addEventListener('keydown',e=>{
   keys.add(e.code);
   if(e.code==='Space')tryDash();if(e.code==='KeyQ'||e.code==='KeyE')tryPulse();
 });window.addEventListener('keyup',e=>keys.delete(e.code));window.addEventListener('blur',()=>{keys.clear();resetJoystick();if(mode==='playing')togglePause();});
+// Suspend combat on backgrounded mobile tabs (browsers may throttle rendering heavily).
+document.addEventListener('visibilitychange',()=>{if(document.hidden){keys.clear();resetJoystick();if(mode==='playing')togglePause();}lastTime=performance.now();});
 $('startButton').addEventListener('click',start);$('retryButton').addEventListener('click',start);$('resumeButton').addEventListener('click',togglePause);$('pauseButton').addEventListener('click',togglePause);
 $('quitButton').addEventListener('click',()=>{if(mode==='pause')finish(false,true);});
 $('hangarButton').addEventListener('click',()=>{game=null;mode='menu';refreshMenu();showScreens('start');});
